@@ -24,9 +24,11 @@ You are invoked by the `/notes` (a.k.a. `@notes`) skill. The orchestrator hands 
 
 ## Configuration
 
-Load these in order, first wins:
+Auth: Docmost API key (Bearer token), not a user account. The skill never sees passwords.
 
-1. Environment variables: `DOCMOST_URL`, `DOCMOST_TOKEN_FILE`, `DOCMOST_EMAIL`.
+Load order (first wins):
+
+1. Environment variables: `DOCMOST_URL`, `DOCMOST_API_KEY_FILE`.
 2. `~/.docmost/config` — set by `setup.sh`.
 3. `<skill-dir>/references/config.local.md` — workspace IDs, written by `setup.sh`.
 4. `<skill-dir>/references/config.md` — defaults only.
@@ -60,7 +62,7 @@ Via `scripts/notes.sh` (which reads config and adds auth):
 - **Replace** allowed only on skill-owned pages (Operating Rules, Filing Rules Learned).
 - **Forbidden:** delete, move, permission changes, full rewrites of any human-owned page.
 
-Auth: read JWT from the configured token file (default `~/.docmost/token`). On `401`, the script auto-refreshes if `~/.docmost/config` has email + the user has previously stored credentials; otherwise surface a clear error.
+Auth: `notes.sh` reads the API key from `${DOCMOST_API_KEY_FILE:-~/.docmost/api-key}` and sends `Authorization: Bearer <key>`. On `401`/`403`, the script aborts with a re-run-setup message — there is no auto-refresh because there are no user credentials to refresh from.
 
 ## Templates
 

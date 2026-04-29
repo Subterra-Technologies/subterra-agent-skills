@@ -18,7 +18,13 @@ This skill does not restructure your workspace. It learns from what's already th
 
 ## First-time setup
 
-Run the setup script once after install:
+The skill authenticates with a **Docmost API key** (Bearer token), not a user account. Generate one in Docmost:
+
+1. Open `Settings → Account → API keys`
+2. Click **Create API Key**, name it (e.g. `notes-skill`)
+3. Copy the key — Docmost shows it once
+
+Then run setup:
 
 ```bash
 ./scripts/setup.sh
@@ -26,16 +32,17 @@ Run the setup script once after install:
 
 It will:
 
-1. Ask for your Docmost base URL (e.g. `http://localhost:3000` or `https://docs.example.com`).
-2. Ask for the agent account email + password.
-3. Authenticate, store the JWT at `~/.docmost/token`.
-4. Save the base URL and email at `~/.docmost/config`.
-5. Discover your spaces and prompt you to choose which one is the **inbox parent** for low-confidence notes. Optionally have the script create an `AI Notes Agent` parent page with `Operating Rules`, `Filing Rules Learned`, `Inbox / Needs Review`, `Proposed Improvements` children.
-6. Write `references/config.local.md` with the resolved space + page IDs.
+1. Ask for your Docmost base URL (e.g. `https://docs.example.com`)
+2. Ask for the API key, verify it works against `/api/spaces`, store at `~/.docmost/api-key` (chmod 600)
+3. Save base URL + key path at `~/.docmost/config`
+4. Discover your spaces and prompt for the **inbox parent**
+5. Optionally create the `AI Notes Agent` parent + 4 subpages
+6. Write `references/config.local.md` (gitignored) with the resolved IDs
+7. Symlink `agents/notes-librarian.md` into `~/.claude/agents/` and `~/.codex/agents/`
 
-`config.local.md` is gitignored. Keep it on the host, never commit it.
+`config.local.md` is gitignored. Never commit it.
 
-If you already have a working Docmost token at `~/.docmost/token`, setup will reuse it.
+Rotate by revoking the key in Docmost and re-running `./scripts/setup.sh`.
 
 ## Trigger phrases
 

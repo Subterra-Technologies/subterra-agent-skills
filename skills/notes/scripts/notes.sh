@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Docmost API wrapper for the /notes skill.
 # Reads connection from ~/.docmost/config (set by setup.sh) or env vars.
+# Auth: Bearer API key (Docmost → Settings → API keys). No user account.
 #
 # Usage:
 #   notes.sh spaces
@@ -15,26 +16,26 @@ set -euo pipefail
 CONFIG="${HOME}/.docmost/config"
 [[ -f "$CONFIG" ]] && source "$CONFIG"
 
-API_BASE="${DOCMOST_URL:-http://localhost:3000}"
-TOKEN_FILE="${DOCMOST_TOKEN_FILE:-${HOME}/.docmost/token}"
-EMAIL="${DOCMOST_EMAIL:-}"
+API_BASE="${DOCMOST_URL:-https://docs.example.com}"
+KEY_FILE="${DOCMOST_API_KEY_FILE:-${HOME}/.docmost/api-key}"
 
 err() { echo "error: $*" >&2; exit 1; }
 
-token() {
-  [[ -s "$TOKEN_FILE" ]] || err "no token at $TOKEN_FILE — run scripts/setup.sh"
-  cat "$TOKEN_FILE"
+key() {
+  [[ -s "$KEY_FILE" ]] || err "no API key at $KEY_FILE — run scripts/setup.sh"
+  cat "$KEY_FILE"
 }
 
 call() {
   local path="$1" body="$2"
-  local t; t=$(token)
-  local resp; resp=$(curl -s -X POST "$API_BASE/api$path" \
-    -H "Cookie: authToken=$t" \
+  local k; k=$(key)
+  local resp; resp=$(curl -s "$API_BASE/api$path" \
+    -X POST \
+    -H "Authorization: Bearer $k" \
     -H "Content-Type: application/json" \
     -d "$body")
-  if echo "$resp" | grep -q '"statusCode":401'; then
-    err "401 — token invalid. Re-run scripts/setup.sh"
+  if echo "$resp" | grep -q '"statusCode":401\|"statusCode":403'; then
+    err "auth rejected — API key revoked or expired. Re-run scripts/setup.sh"
   fi
   echo "$resp"
 }
