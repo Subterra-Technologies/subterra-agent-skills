@@ -20,67 +20,43 @@ err() { echo "error: $*" >&2; exit 1; }
 ask() { local prompt="$1" def="${2:-}" v; read -rp "$prompt${def:+ [$def]}: " v || true; echo "${v:-$def}"; }
 ask_secret() { local prompt="$1" v; read -rsp "$prompt: " v; echo >&2; echo "$v"; }
 
-# Arrow-key single-select. Usage: pick_one "Prompt" opt1 opt2 ...
-# Echoes chosen option to stdout. Falls back to first option if non-tty.
+# Single-select. Uses fzf if available; else numbered prompt. Echoes choice on stdout.
 pick_one() {
   local prompt="$1"; shift
-  local opts=("$@") n=${#@} sel=0 i key key2
-  if ! [[ -t 0 && -t 2 ]]; then printf "%s\n" "${opts[0]}"; return; fi
-  printf "%s (↑/↓, Enter)\n" "$prompt" >&2
-  tput civis 2>/dev/null || true
-  for ((i=0; i<n; i++)); do printf "\n" >&2; done
+  local opts=("$@") n=${#opts[@]} i choice
+  if command -v fzf >/dev/null 2>&1 && [[ -t 2 ]]; then
+    printf "%s\n" "${opts[@]}" | fzf --prompt="$prompt > " --height=40% --reverse --no-multi
+    return
+  fi
+  printf "\n%s\n" "$prompt" >&2
+  for ((i=0; i<n; i++)); do printf "  %d) %s\n" "$((i+1))" "${opts[i]}" >&2; done
   while true; do
-    printf "\033[%dA" "$n" >&2
-    for ((i=0; i<n; i++)); do
-      if (( i == sel )); then
-        printf "\033[2K\r\033[7m> %s\033[0m\n" "${opts[i]}" >&2
-      else
-        printf "\033[2K\r  %s\n" "${opts[i]}" >&2
-      fi
-    done
-    IFS= read -rsn1 key
-    if [[ $key == $'\x1b' ]]; then read -rsn2 -t 0.01 key2 || true; key+=${key2:-}; fi
-    case "$key" in
-      $'\x1b[A'|k) (( sel = (sel - 1 + n) % n ));;
-      $'\x1b[B'|j) (( sel = (sel + 1) % n ));;
-      "") tput cnorm 2>/dev/null || true; printf "%s\n" "${opts[sel]}"; return;;
-      q) tput cnorm 2>/dev/null || true; return 1;;
-    esac
+    read -rp "  Choice [1-$n]: " choice
+    [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= n )) && break
+    echo "  invalid — enter a number 1-$n" >&2
   done
+  printf "%s\n" "${opts[$((choice-1))]}"
 }
 
-# Arrow-key multi-select. Usage: pick_many "Prompt" opt1 opt2 ...
-# Echoes chosen options (one per line). All on by default. Space toggles, Enter confirms.
+# Multi-select. Uses fzf --multi if available; else space-separated numbers (Enter = all). Echoes chosen lines.
 pick_many() {
   local prompt="$1"; shift
-  local opts=("$@") n=${#@} sel=0 i key key2
-  local checked=()
-  for ((i=0; i<n; i++)); do checked[i]=1; done
-  if ! [[ -t 0 && -t 2 ]]; then for o in "${opts[@]}"; do printf "%s\n" "$o"; done; return; fi
-  printf "%s (↑/↓, Space, Enter)\n" "$prompt" >&2
-  tput civis 2>/dev/null || true
-  for ((i=0; i<n; i++)); do printf "\n" >&2; done
-  while true; do
-    printf "\033[%dA" "$n" >&2
-    for ((i=0; i<n; i++)); do
-      local mark="[ ]"; [[ ${checked[i]} -eq 1 ]] && mark="[x]"
-      if (( i == sel )); then
-        printf "\033[2K\r\033[7m> %s %s\033[0m\n" "$mark" "${opts[i]}" >&2
-      else
-        printf "\033[2K\r  %s %s\n" "$mark" "${opts[i]}" >&2
-      fi
-    done
-    IFS= read -rsn1 key
-    if [[ $key == $'\x1b' ]]; then read -rsn2 -t 0.01 key2 || true; key+=${key2:-}; fi
-    case "$key" in
-      $'\x1b[A'|k) (( sel = (sel - 1 + n) % n ));;
-      $'\x1b[B'|j) (( sel = (sel + 1) % n ));;
-      " ") checked[sel]=$(( 1 - checked[sel] ));;
-      "") tput cnorm 2>/dev/null || true
-          for ((i=0; i<n; i++)); do [[ ${checked[i]} -eq 1 ]] && printf "%s\n" "${opts[i]}"; done
-          return;;
-      q) tput cnorm 2>/dev/null || true; return 1;;
-    esac
+  local opts=("$@") n=${#opts[@]} i choice num
+  if command -v fzf >/dev/null 2>&1 && [[ -t 2 ]]; then
+    printf "%s\n" "${opts[@]}" | fzf --prompt="$prompt > " --height=40% --reverse --multi \
+      --header="TAB to toggle, Enter to confirm"
+    return
+  fi
+  printf "\n%s\n" "$prompt" >&2
+  for ((i=0; i<n; i++)); do printf "  %d) %s\n" "$((i+1))" "${opts[i]}" >&2; done
+  read -rp "  Numbers to include (space-separated, Enter = all, '-' = none): " choice
+  if [[ -z "$choice" ]]; then
+    printf "%s\n" "${opts[@]}"
+    return
+  fi
+  [[ "$choice" == "-" ]] && return
+  for num in $choice; do
+    [[ "$num" =~ ^[0-9]+$ ]] && (( num >= 1 && num <= n )) && printf "%s\n" "${opts[$((num-1))]}"
   done
 }
 
