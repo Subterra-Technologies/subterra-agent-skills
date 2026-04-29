@@ -74,7 +74,7 @@ print(json.dumps(d))' "$space" "$parent" "$title")
     body=$(python3 -c '
 import json,sys
 content=open(sys.argv[3]).read()
-print(json.dumps({"pageId":sys.argv[1],"operation":sys.argv[2],"content":content}))' "$pid" "$op" "$file")
+print(json.dumps({"pageId":sys.argv[1],"operation":sys.argv[2],"format":"markdown","content":content}))' "$pid" "$op" "$file")
     call /pages/update "$body"
     ;;
   *)
