@@ -14,7 +14,15 @@ Universal skill installer. Clones any skill repo into the shared layout and syml
 /install-skill <git-url> [name] [--branch <ref>] [--update]
 ```
 
-See [`install-skill/SKILL.md`](install-skill/SKILL.md) for full docs.
+See [`install-skill/SKILL.md`](install-skill/SKILL.md).
+
+### notes
+
+Agentic note-filing skill for a Docmost wiki. Tag `/notes` (or `@notes`) during a chat — a subagent extracts durable knowledge by category, picks the best existing destination, and falls back to an inbox when confidence is low.
+
+First run requires `notes/scripts/setup.sh` to configure your Docmost URL, agent account, and workspace IDs. All instance-specific values live in `notes/references/config.local.md` (gitignored).
+
+See [`notes/SKILL.md`](notes/SKILL.md).
 
 ## Bootstrap
 
@@ -22,13 +30,18 @@ To install `install-skill` itself before you have it:
 
 ```bash
 mkdir -p ~/.agent-skills ~/.claude/skills ~/.codex/skills
-git clone https://github.com/<org>/subterra-agent-skills.git ~/.agent-skills/_repo
+git clone https://github.com/Subterra-Technologies/subterra-agent-skills.git ~/.agent-skills/_repo
 ln -sfn ~/.agent-skills/_repo/install-skill ~/.agent-skills/install-skill
 ln -sfn ~/.agent-skills/install-skill ~/.claude/skills/install-skill
 ln -sfn ~/.agent-skills/install-skill ~/.codex/skills/install-skill
 ```
 
-After that, use `/install-skill <git-url>` for everything else.
+After that, use `/install-skill <git-url>` for everything else, e.g.:
+
+```
+/install-skill https://github.com/Subterra-Technologies/subterra-agent-skills.git
+# then: ~/.agent-skills/subterra-agent-skills/notes/scripts/setup.sh
+```
 
 ## Skill format
 
