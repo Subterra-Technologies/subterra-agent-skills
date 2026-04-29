@@ -182,25 +182,72 @@ PY
     [[ "${PARENT_NAMES[i]}" == "$PARENT_PICK" ]] && PARENT_PATH="${PARENT_IDS[i]}" && break
   done
 
+  # Detect existing "AI Notes Agent" parent at the chosen location (re-runs / second machine).
+  if [[ -n "$PARENT_PATH" ]]; then
+    SCAN_JSON=$(api /pages/sidebar-pages "{\"spaceId\":\"$INBOX_SPACE_ID\",\"pageId\":\"$PARENT_PATH\"}")
+  else
+    SCAN_JSON="$SIDEBAR_JSON"
+  fi
+  AGENT_AREA_PARENT_ID=$(SCAN_JSON="$SCAN_JSON" python3 <<'PY'
+import json, os
+d = json.loads(os.environ["SCAN_JSON"])
+items = d.get("items") or d.get("data", {}).get("items") or []
+for p in items:
+    if p.get("title", "").strip().lower() == "ai notes agent":
+        print(p.get("id", "")); break
+PY
+)
+  if [[ -n "$AGENT_AREA_PARENT_ID" ]]; then
+    echo "  found existing 'AI Notes Agent' → $AGENT_AREA_PARENT_ID (reusing)"
+    CHILD_JSON=$(api /pages/sidebar-pages "{\"spaceId\":\"$INBOX_SPACE_ID\",\"pageId\":\"$AGENT_AREA_PARENT_ID\"}")
+    while IFS=$'\t' read -r ctitle cid; do
+      case "$ctitle" in
+        "Operating Rules")        OR_ID="$cid"; echo "    Operating Rules → $cid (existing)";;
+        "Filing Rules Learned")   FRL_ID="$cid"; echo "    Filing Rules Learned → $cid (existing)";;
+        "Inbox / Needs Review")   INBOX_ID="$cid"; echo "    Inbox / Needs Review → $cid (existing)";;
+        "Proposed Improvements")  PI_ID="$cid"; echo "    Proposed Improvements → $cid (existing)";;
+      esac
+    done < <(CHILD_JSON="$CHILD_JSON" python3 <<'PY'
+import json, os
+d = json.loads(os.environ["CHILD_JSON"])
+items = d.get("items") or d.get("data", {}).get("items") or []
+for p in items:
+    print(f"{p.get('title','')}\t{p.get('id','')}")
+PY
+)
+  fi
+
   echo
   PICKED_CHILDREN=()
   while IFS= read -r line; do
     [[ -n "$line" ]] && PICKED_CHILDREN+=("$line")
-  done < <(pick_many "Which subpages to create?" \
+  done < <(pick_many "Which subpages to create? (existing ones will be reused)" \
     "Operating Rules" "Filing Rules Learned" "Inbox / Needs Review" "Proposed Improvements")
   if [[ ${#PICKED_CHILDREN[@]} -eq 0 ]]; then
     echo "  no subpages selected — skipping AI Notes Agent area"
   else
-    body=$(python3 -c '
+    if [[ -z "$AGENT_AREA_PARENT_ID" ]]; then
+      body=$(python3 -c '
 import json, sys
 d = {"spaceId": sys.argv[1], "title": "AI Notes Agent"}
 if sys.argv[2]: d["parentPageId"] = sys.argv[2]
 print(json.dumps(d))' "$INBOX_SPACE_ID" "$PARENT_PATH")
-    resp=$(api /pages/create "$body")
-    AGENT_AREA_PARENT_ID=$(echo "$resp" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("id") or d.get("data",{}).get("id"))')
-    echo "  AI Notes Agent → $AGENT_AREA_PARENT_ID"
+      resp=$(api /pages/create "$body")
+      AGENT_AREA_PARENT_ID=$(echo "$resp" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("id") or d.get("data",{}).get("id"))')
+      echo "  AI Notes Agent → $AGENT_AREA_PARENT_ID"
+    fi
 
     for child in "${PICKED_CHILDREN[@]}"; do
+      # Skip if already detected
+      existing=""
+      case "$child" in
+        "Operating Rules")        existing="$OR_ID";;
+        "Filing Rules Learned")   existing="$FRL_ID";;
+        "Inbox / Needs Review")   existing="$INBOX_ID";;
+        "Proposed Improvements")  existing="$PI_ID";;
+      esac
+      if [[ -n "$existing" ]]; then continue; fi
+
       body=$(python3 -c 'import json,sys;print(json.dumps({"spaceId":sys.argv[1],"parentPageId":sys.argv[2],"title":sys.argv[3]}))' \
         "$INBOX_SPACE_ID" "$AGENT_AREA_PARENT_ID" "$child")
       resp=$(api /pages/create "$body")
