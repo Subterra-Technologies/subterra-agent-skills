@@ -20,6 +20,70 @@ err() { echo "error: $*" >&2; exit 1; }
 ask() { local prompt="$1" def="${2:-}" v; read -rp "$prompt${def:+ [$def]}: " v || true; echo "${v:-$def}"; }
 ask_secret() { local prompt="$1" v; read -rsp "$prompt: " v; echo >&2; echo "$v"; }
 
+# Arrow-key single-select. Usage: pick_one "Prompt" opt1 opt2 ...
+# Echoes chosen option to stdout. Falls back to first option if non-tty.
+pick_one() {
+  local prompt="$1"; shift
+  local opts=("$@") n=${#@} sel=0 i key key2
+  if ! [[ -t 0 && -t 2 ]]; then printf "%s\n" "${opts[0]}"; return; fi
+  printf "%s (↑/↓, Enter)\n" "$prompt" >&2
+  tput civis 2>/dev/null || true
+  for ((i=0; i<n; i++)); do printf "\n" >&2; done
+  while true; do
+    printf "\033[%dA" "$n" >&2
+    for ((i=0; i<n; i++)); do
+      if (( i == sel )); then
+        printf "\033[2K\r\033[7m> %s\033[0m\n" "${opts[i]}" >&2
+      else
+        printf "\033[2K\r  %s\n" "${opts[i]}" >&2
+      fi
+    done
+    IFS= read -rsn1 key
+    if [[ $key == $'\x1b' ]]; then read -rsn2 -t 0.01 key2 || true; key+=${key2:-}; fi
+    case "$key" in
+      $'\x1b[A'|k) (( sel = (sel - 1 + n) % n ));;
+      $'\x1b[B'|j) (( sel = (sel + 1) % n ));;
+      "") tput cnorm 2>/dev/null || true; printf "%s\n" "${opts[sel]}"; return;;
+      q) tput cnorm 2>/dev/null || true; return 1;;
+    esac
+  done
+}
+
+# Arrow-key multi-select. Usage: pick_many "Prompt" opt1 opt2 ...
+# Echoes chosen options (one per line). All on by default. Space toggles, Enter confirms.
+pick_many() {
+  local prompt="$1"; shift
+  local opts=("$@") n=${#@} sel=0 i key key2
+  local checked=()
+  for ((i=0; i<n; i++)); do checked[i]=1; done
+  if ! [[ -t 0 && -t 2 ]]; then for o in "${opts[@]}"; do printf "%s\n" "$o"; done; return; fi
+  printf "%s (↑/↓, Space, Enter)\n" "$prompt" >&2
+  tput civis 2>/dev/null || true
+  for ((i=0; i<n; i++)); do printf "\n" >&2; done
+  while true; do
+    printf "\033[%dA" "$n" >&2
+    for ((i=0; i<n; i++)); do
+      local mark="[ ]"; [[ ${checked[i]} -eq 1 ]] && mark="[x]"
+      if (( i == sel )); then
+        printf "\033[2K\r\033[7m> %s %s\033[0m\n" "$mark" "${opts[i]}" >&2
+      else
+        printf "\033[2K\r  %s %s\n" "$mark" "${opts[i]}" >&2
+      fi
+    done
+    IFS= read -rsn1 key
+    if [[ $key == $'\x1b' ]]; then read -rsn2 -t 0.01 key2 || true; key+=${key2:-}; fi
+    case "$key" in
+      $'\x1b[A'|k) (( sel = (sel - 1 + n) % n ));;
+      $'\x1b[B'|j) (( sel = (sel + 1) % n ));;
+      " ") checked[sel]=$(( 1 - checked[sel] ));;
+      "") tput cnorm 2>/dev/null || true
+          for ((i=0; i<n; i++)); do [[ ${checked[i]} -eq 1 ]] && printf "%s\n" "${opts[i]}"; done
+          return;;
+      q) tput cnorm 2>/dev/null || true; return 1;;
+    esac
+  done
+}
+
 mkdir -p "$CONFIG_DIR"
 
 echo "=== /notes skill setup ==="
@@ -90,26 +154,30 @@ api() {
 echo
 echo "discovering spaces..."
 SPACES_JSON=$(api /spaces '{}')
-SPACES_JSON="$SPACES_JSON" python3 <<'PY'
-import json, os
-d = json.loads(os.environ["SPACES_JSON"])
-items = d.get("data", {}).get("items", [])
-for i, s in enumerate(items, 1):
-    print(f"  {i}. {s['name']:30} {s['id']}")
-PY
 
-echo
-INBOX_SPACE_NAME=$(ask "Which space should host the AI Notes Agent inbox?" "Projects")
-INBOX_SPACE_ID=$(SPACES_JSON="$SPACES_JSON" TARGET="$INBOX_SPACE_NAME" python3 <<'PY'
+# Build parallel arrays of space names + IDs
+mapfile -t SPACE_NAMES < <(SPACES_JSON="$SPACES_JSON" python3 <<'PY'
 import json, os
-target = os.environ["TARGET"]
 d = json.loads(os.environ["SPACES_JSON"])
-for s in d.get("data", {}).get("items", []):
-    if s["name"].lower() == target.lower():
-        print(s["id"]); break
+for s in d.get("data", {}).get("items", []): print(s["name"])
 PY
 )
+mapfile -t SPACE_IDS < <(SPACES_JSON="$SPACES_JSON" python3 <<'PY'
+import json, os
+d = json.loads(os.environ["SPACES_JSON"])
+for s in d.get("data", {}).get("items", []): print(s["id"])
+PY
+)
+[[ ${#SPACE_NAMES[@]} -gt 0 ]] || err "no spaces returned from Docmost"
+
+echo
+INBOX_SPACE_NAME=$(pick_one "Which space should host the AI Notes Agent inbox?" "${SPACE_NAMES[@]}")
+INBOX_SPACE_ID=""
+for i in "${!SPACE_NAMES[@]}"; do
+  [[ "${SPACE_NAMES[i]}" == "$INBOX_SPACE_NAME" ]] && INBOX_SPACE_ID="${SPACE_IDS[i]}" && break
+done
 [[ -n "$INBOX_SPACE_ID" ]] || err "space '$INBOX_SPACE_NAME' not found"
+echo "  → $INBOX_SPACE_NAME ($INBOX_SPACE_ID)"
 
 CREATE_AREA=$(ask "Create 'AI Notes Agent' parent + subpages in $INBOX_SPACE_NAME? (y/N)" "N")
 AGENT_AREA_PARENT_ID=""
@@ -117,28 +185,36 @@ OR_ID=""; FRL_ID=""; INBOX_ID=""; PI_ID=""
 
 if [[ "$CREATE_AREA" =~ ^[Yy] ]]; then
   PARENT_PATH=$(ask "Optional: existing parent page ID inside $INBOX_SPACE_NAME (blank = top level)" "")
-  body=$(python3 -c '
+
+  echo
+  mapfile -t PICKED_CHILDREN < <(pick_many "Which subpages to create?" \
+    "Operating Rules" "Filing Rules Learned" "Inbox / Needs Review" "Proposed Improvements")
+  if [[ ${#PICKED_CHILDREN[@]} -eq 0 ]]; then
+    echo "  no subpages selected — skipping AI Notes Agent area"
+  else
+    body=$(python3 -c '
 import json, sys
 d = {"spaceId": sys.argv[1], "title": "AI Notes Agent"}
 if sys.argv[2]: d["parentPageId"] = sys.argv[2]
 print(json.dumps(d))' "$INBOX_SPACE_ID" "$PARENT_PATH")
-  resp=$(api /pages/create "$body")
-  AGENT_AREA_PARENT_ID=$(echo "$resp" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("id") or d.get("data",{}).get("id"))')
-  echo "  AI Notes Agent → $AGENT_AREA_PARENT_ID"
-
-  for child in "Operating Rules" "Filing Rules Learned" "Inbox / Needs Review" "Proposed Improvements"; do
-    body=$(python3 -c 'import json,sys;print(json.dumps({"spaceId":sys.argv[1],"parentPageId":sys.argv[2],"title":sys.argv[3]}))' \
-      "$INBOX_SPACE_ID" "$AGENT_AREA_PARENT_ID" "$child")
     resp=$(api /pages/create "$body")
-    cid=$(echo "$resp" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("id") or d.get("data",{}).get("id"))')
-    echo "    $child → $cid"
-    case "$child" in
-      "Operating Rules")        OR_ID="$cid";;
-      "Filing Rules Learned")   FRL_ID="$cid";;
-      "Inbox / Needs Review")   INBOX_ID="$cid";;
-      "Proposed Improvements")  PI_ID="$cid";;
-    esac
-  done
+    AGENT_AREA_PARENT_ID=$(echo "$resp" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("id") or d.get("data",{}).get("id"))')
+    echo "  AI Notes Agent → $AGENT_AREA_PARENT_ID"
+
+    for child in "${PICKED_CHILDREN[@]}"; do
+      body=$(python3 -c 'import json,sys;print(json.dumps({"spaceId":sys.argv[1],"parentPageId":sys.argv[2],"title":sys.argv[3]}))' \
+        "$INBOX_SPACE_ID" "$AGENT_AREA_PARENT_ID" "$child")
+      resp=$(api /pages/create "$body")
+      cid=$(echo "$resp" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("id") or d.get("data",{}).get("id"))')
+      echo "    $child → $cid"
+      case "$child" in
+        "Operating Rules")        OR_ID="$cid";;
+        "Filing Rules Learned")   FRL_ID="$cid";;
+        "Inbox / Needs Review")   INBOX_ID="$cid";;
+        "Proposed Improvements")  PI_ID="$cid";;
+      esac
+    done
+  fi
 fi
 
 echo
