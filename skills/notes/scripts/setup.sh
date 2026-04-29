@@ -156,16 +156,14 @@ echo "discovering spaces..."
 SPACES_JSON=$(api /spaces '{}')
 
 # Build parallel arrays of space names + IDs
-mapfile -t SPACE_NAMES < <(SPACES_JSON="$SPACES_JSON" python3 <<'PY'
+SPACE_NAMES=(); SPACE_IDS=()
+while IFS=$'\t' read -r n id; do
+  [[ -n "$n" ]] && SPACE_NAMES+=("$n") && SPACE_IDS+=("$id")
+done < <(SPACES_JSON="$SPACES_JSON" python3 <<'PY'
 import json, os
 d = json.loads(os.environ["SPACES_JSON"])
-for s in d.get("data", {}).get("items", []): print(s["name"])
-PY
-)
-mapfile -t SPACE_IDS < <(SPACES_JSON="$SPACES_JSON" python3 <<'PY'
-import json, os
-d = json.loads(os.environ["SPACES_JSON"])
-for s in d.get("data", {}).get("items", []): print(s["id"])
+for s in d.get("data", {}).get("items", []):
+    print(f"{s['name']}\t{s['id']}")
 PY
 )
 [[ ${#SPACE_NAMES[@]} -gt 0 ]] || err "no spaces returned from Docmost"
@@ -187,7 +185,10 @@ if [[ "$CREATE_AREA" =~ ^[Yy] ]]; then
   PARENT_PATH=$(ask "Optional: existing parent page ID inside $INBOX_SPACE_NAME (blank = top level)" "")
 
   echo
-  mapfile -t PICKED_CHILDREN < <(pick_many "Which subpages to create?" \
+  PICKED_CHILDREN=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && PICKED_CHILDREN+=("$line")
+  done < <(pick_many "Which subpages to create?" \
     "Operating Rules" "Filing Rules Learned" "Inbox / Needs Review" "Proposed Improvements")
   if [[ ${#PICKED_CHILDREN[@]} -eq 0 ]]; then
     echo "  no subpages selected — skipping AI Notes Agent area"
