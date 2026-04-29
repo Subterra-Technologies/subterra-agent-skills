@@ -24,10 +24,18 @@ The skill authenticates with a **Docmost API key** (Bearer token), not a user ac
 2. Click **Create API Key**, name it (e.g. `notes-skill`)
 3. Copy the key — Docmost shows it once
 
-Then run setup:
+Then run setup. From anywhere:
 
 ```bash
-./scripts/setup.sh
+"$(dirname "$(readlink -f "$(npx --no-install skills which notes 2>/dev/null || echo ~/.agents/skills/notes/SKILL.md)")")/scripts/setup.sh"
+```
+
+Or simpler — just invoke `/notes` (or `@notes`) in your agent and it will detect the missing config and offer to run setup for you.
+
+Direct path (after `npx skills add`):
+
+```bash
+~/.agents/skills/notes/scripts/setup.sh
 ```
 
 It will:
@@ -55,9 +63,10 @@ Rotate by revoking the key in Docmost and re-running `./scripts/setup.sh`.
 
 ## What the skill does
 
-1. Capture the conversation slice the user is referring to.
-2. Spawn the `notes-librarian` subagent (`agents/notes-librarian.md`) with a self-contained prompt.
-3. Return the subagent's report.
+1. **Preflight:** check that `<skill-dir>/references/config.local.md` exists. If not, the skill is unconfigured — tell the user "Notes skill isn't configured yet. Run setup now? (the script will prompt for your Docmost URL and API key)" and, on confirmation, execute `<skill-dir>/scripts/setup.sh` via Bash. Do not attempt to spawn the librarian without config.
+2. Capture the conversation slice the user is referring to.
+3. Spawn the `notes-librarian` subagent (`agents/notes-librarian.md`) with a self-contained prompt.
+4. Return the subagent's report.
 
 The subagent reads `references/config.local.md` for IDs, `references/filing-rules.md` for the destination decision tree, and `references/extraction.md` for bucket rules.
 

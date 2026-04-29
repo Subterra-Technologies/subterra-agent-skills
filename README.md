@@ -33,13 +33,19 @@ The installer symlinks each skill into the right place for every detected coding
 
 ## Per-skill setup
 
-The `notes` skill needs a one-time Docmost configuration. After install:
+The `notes` skill needs a one-time Docmost configuration. Easiest way: just invoke `/notes` in your agent — it detects missing config and offers to run setup for you.
+
+To run it manually (after `npx skills add`):
 
 ```bash
-~/.agent-skills/subterra-agent-skills/skills/notes/scripts/setup.sh
+~/.agents/skills/notes/scripts/setup.sh
 ```
 
-Or, if `npx skills` symlinked into the project/global skills dir directly, find the file at `<install-path>/notes/scripts/setup.sh`.
+If your `npx skills` install put the skills somewhere else, find with:
+
+```bash
+find ~ -maxdepth 5 -type f -path '*notes/scripts/setup.sh' 2>/dev/null
+```
 
 **Auth uses a Docmost API key (Bearer token), not a user account.** Generate one in Docmost → Settings → Account → API keys before running setup.
 
