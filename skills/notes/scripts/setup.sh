@@ -159,7 +159,28 @@ AGENT_AREA_PARENT_ID=""
 OR_ID=""; FRL_ID=""; INBOX_ID=""; PI_ID=""
 
 if [[ "$CREATE_AREA" =~ ^[Yy] ]]; then
-  PARENT_PATH=$(ask "Optional: existing parent page ID inside $INBOX_SPACE_NAME (blank = top level)" "")
+  echo
+  echo "fetching pages in $INBOX_SPACE_NAME..."
+  SIDEBAR_JSON=$(api /pages/sidebar-pages "{\"spaceId\":\"$INBOX_SPACE_ID\"}")
+
+  PARENT_NAMES=("(top level — directly in $INBOX_SPACE_NAME)")
+  PARENT_IDS=("")
+  while IFS=$'\t' read -r n id; do
+    [[ -n "$n" ]] && PARENT_NAMES+=("$n") && PARENT_IDS+=("$id")
+  done < <(SIDEBAR_JSON="$SIDEBAR_JSON" python3 <<'PY'
+import json, os
+d = json.loads(os.environ["SIDEBAR_JSON"])
+items = d.get("items") or d.get("data", {}).get("items") or []
+for p in items:
+    print(f"{p.get('title','(untitled)')}\t{p.get('id','')}")
+PY
+)
+
+  PARENT_PICK=$(pick_one "Where should 'AI Notes Agent' live?" "${PARENT_NAMES[@]}")
+  PARENT_PATH=""
+  for i in "${!PARENT_NAMES[@]}"; do
+    [[ "${PARENT_NAMES[i]}" == "$PARENT_PICK" ]] && PARENT_PATH="${PARENT_IDS[i]}" && break
+  done
 
   echo
   PICKED_CHILDREN=()
