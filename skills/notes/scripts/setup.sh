@@ -95,7 +95,7 @@ import json, sys
 d = json.load(sys.stdin)
 items = d.get("data", {}).get("items", [])
 for i, s in enumerate(items, 1):
-    print(f"  {i}. {s[\"name\"]:30} {s[\"id\"]}")
+    print(f"  {i}. {s['name']:30} {s['id']}")
 '
 
 echo
@@ -148,7 +148,7 @@ import json, sys
 d = json.load(sys.stdin)
 print("spaces:")
 for s in d.get("data", {}).get("items", []):
-    print(f"  {s[\"name\"]}: \"{s[\"id\"]}\"")
+    print(f"  {s['name']}: \"{s['id']}\"")
 ')
 
 LINK_BASE=$(ask "Public link base for sharing (e.g. https://docs.example.com)" "$DOCMOST_URL")
