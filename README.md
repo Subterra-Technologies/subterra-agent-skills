@@ -26,21 +26,28 @@ See [`notes/SKILL.md`](notes/SKILL.md).
 
 ## Bootstrap
 
-To install `install-skill` itself before you have it:
+One-shot bootstrap for a fresh machine — clone the repo, then `--link-only` symlinks every skill (and any subagents) into both Claude Code and Codex:
 
 ```bash
-mkdir -p ~/.agent-skills ~/.claude/skills ~/.codex/skills
-git clone https://github.com/Subterra-Technologies/subterra-agent-skills.git ~/.agent-skills/_repo
-ln -sfn ~/.agent-skills/_repo/install-skill ~/.agent-skills/install-skill
-ln -sfn ~/.agent-skills/install-skill ~/.claude/skills/install-skill
-ln -sfn ~/.agent-skills/install-skill ~/.codex/skills/install-skill
+mkdir -p ~/.agent-skills
+git clone https://github.com/Subterra-Technologies/subterra-agent-skills.git \
+  ~/.agent-skills/subterra-agent-skills
+~/.agent-skills/subterra-agent-skills/install-skill/scripts/install.sh \
+  --link-only subterra-agent-skills
 ```
 
-After that, use `/install-skill <git-url>` for everything else, e.g.:
+After that, use the slash command for any other skill repo:
 
 ```
-/install-skill https://github.com/Subterra-Technologies/subterra-agent-skills.git
-# then: ~/.agent-skills/subterra-agent-skills/notes/scripts/setup.sh
+/install-skill https://github.com/<org>/<repo>.git
+```
+
+### Per-skill setup
+
+Some skills need a one-time setup script. After install, run:
+
+```bash
+~/.agent-skills/subterra-agent-skills/notes/scripts/setup.sh
 ```
 
 ## Skill format

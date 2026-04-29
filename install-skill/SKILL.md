@@ -7,7 +7,7 @@ description: >
   to ~/.agent-skills/<name>/ and symlinks into both ~/.claude/skills/ and
   ~/.codex/skills/ so the same skill works for both agents. Prompts for
   credentials when the repo is private.
-argument-hint: "<git-url> [name] [--branch <ref>] [--update]"
+argument-hint: "<git-url> [name] [--branch <ref>] [--update] [--only <skill>]"
 ---
 
 # /install-skill — Universal Skill Installer
@@ -17,17 +17,26 @@ Installs a skill from a git repo into the shared layout used by Claude Code and 
 ## Layout convention
 
 ```
-~/.agent-skills/<name>/      # canonical clone (single source of truth)
-~/.claude/skills/<name>      # symlink → ~/.agent-skills/<name>
-~/.codex/skills/<name>       # symlink → ~/.agent-skills/<name>
+~/.agent-skills/<repo>/         # canonical clone (single source of truth)
+~/.claude/skills/<skill>        # symlink → repo or repo/<subdir>
+~/.codex/skills/<skill>         # symlink → same target
+~/.claude/agents/<agent>.md     # symlink → repo/<skill>/agents/<agent>.md (if any)
+~/.codex/agents/<agent>.md      # symlink → same target
 ```
 
-Both agents read the same files. Update once, both agents pick it up.
+Both agents read the same files. Update once, both pick it up.
+
+## Repo layouts supported
+
+- **Single skill** — `SKILL.md` at repo root. The skill installs as `<repo-name>`.
+- **Monorepo** — multiple subdirs, each with its own `SKILL.md`. All are installed by default; restrict with `--only <name>`.
+
+For each detected skill, any `agents/*.md` files are also symlinked into both agent dirs so the orchestrator can spawn them as subagents.
 
 ## Usage
 
 ```
-/install-skill <git-url> [name] [--branch <ref>] [--update]
+/install-skill <git-url> [name] [--branch <ref>] [--update] [--only <skill>]
 ```
 
 - `git-url` — HTTPS or SSH. Examples:
@@ -37,6 +46,7 @@ Both agents read the same files. Update once, both agents pick it up.
 - `name` — optional override; default is the repo basename.
 - `--branch <ref>` — branch or tag (default `main`).
 - `--update` — pull latest into an existing install.
+- `--only <skill>` — for monorepos, install just the named subdir.
 
 ## Behavior
 

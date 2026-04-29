@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
 CONFIG_DIR="${HOME}/.docmost"
 TOKEN_FILE="${CONFIG_DIR}/token"
 ENV_FILE="${CONFIG_DIR}/config"

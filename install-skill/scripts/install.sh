@@ -2,8 +2,12 @@
 # Universal skill installer — clones a skill repo into the shared agent-skills
 # layout and symlinks it into both Claude Code and Codex skill dirs.
 #
+# Supports both single-skill repos (SKILL.md at root) and monorepos (one or
+# more subdirs each containing a SKILL.md). For each skill detected, also
+# symlinks any agents/*.md files into ~/.claude/agents/ and ~/.codex/agents/.
+#
 # Usage:
-#   install.sh <git-url> [name] [--branch <ref>] [--update]
+#   install.sh <git-url> [name] [--branch <ref>] [--update] [--only <skill>]
 #
 # Auth (HTTPS private repos): set GIT_USER and GIT_TOKEN in env. They are used
 # once via a transient credential helper and never written to disk.
@@ -11,8 +15,10 @@
 set -euo pipefail
 
 SHARED_DIR="${HOME}/.agent-skills"
-CLAUDE_DIR="${HOME}/.claude/skills"
-CODEX_DIR="${HOME}/.codex/skills"
+CLAUDE_SKILLS="${HOME}/.claude/skills"
+CODEX_SKILLS="${HOME}/.codex/skills"
+CLAUDE_AGENTS="${HOME}/.claude/agents"
+CODEX_AGENTS="${HOME}/.codex/agents"
 
 err() { echo "error: $*" >&2; exit 1; }
 log() { echo "$*" >&2; }
@@ -21,12 +27,16 @@ URL=""
 NAME=""
 BRANCH=""
 UPDATE=0
+ONLY=""
+LINK_ONLY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --branch) BRANCH="$2"; shift 2;;
     --update) UPDATE=1; shift;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0;;
+    --only)   ONLY="$2"; shift 2;;
+    --link-only) LINK_ONLY=1; shift;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0;;
     *)
       if [[ -z "$URL" ]]; then URL="$1"
       elif [[ -z "$NAME" ]]; then NAME="$1"
@@ -36,24 +46,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -z "$URL" && $UPDATE -eq 0 ]] && err "git url required"
+[[ -z "$URL" && $UPDATE -eq 0 && $LINK_ONLY -eq 0 ]] && err "git url required"
 
-# Update path: NAME is positional 1 instead of URL
-if [[ $UPDATE -eq 1 && -z "$NAME" && -n "$URL" && ! "$URL" =~ : ]]; then
+if [[ ($UPDATE -eq 1 || $LINK_ONLY -eq 1) && -z "$NAME" && -n "$URL" && ! "$URL" =~ : ]]; then
   NAME="$URL"; URL=""
 fi
 
-derive_name() {
-  local u="$1"
-  basename "${u%.git}"
-}
+derive_name() { basename "${1%.git}"; }
 
 [[ -z "$NAME" && -n "$URL" ]] && NAME=$(derive_name "$URL")
 [[ -z "$NAME" ]] && err "could not derive skill name"
-[[ "$NAME" =~ ^[A-Za-z0-9._-]+$ ]] || err "invalid skill name: $NAME"
+[[ "$NAME" =~ ^[A-Za-z0-9._-]+$ ]] || err "invalid name: $NAME"
 
 TARGET="$SHARED_DIR/$NAME"
-mkdir -p "$SHARED_DIR" "$CLAUDE_DIR" "$CODEX_DIR"
+mkdir -p "$SHARED_DIR" "$CLAUDE_SKILLS" "$CODEX_SKILLS" "$CLAUDE_AGENTS" "$CODEX_AGENTS"
 
 git_with_creds() {
   if [[ -n "${GIT_TOKEN:-}" && -n "${GIT_USER:-}" ]]; then
@@ -65,7 +71,10 @@ git_with_creds() {
   fi
 }
 
-if [[ $UPDATE -eq 1 ]]; then
+if [[ $LINK_ONLY -eq 1 ]]; then
+  [[ -d "$TARGET" ]] || err "no clone at $TARGET — clone it first"
+  log "linking existing clone at $TARGET"
+elif [[ $UPDATE -eq 1 ]]; then
   [[ -d "$TARGET/.git" ]] || err "no install at $TARGET (run without --update first)"
   cd "$TARGET"
   if ! git diff --quiet || ! git diff --cached --quiet; then
@@ -73,9 +82,7 @@ if [[ $UPDATE -eq 1 ]]; then
   fi
   log "updating $NAME at $TARGET"
   git_with_creds fetch --tags origin
-  if [[ -n "$BRANCH" ]]; then
-    git checkout "$BRANCH"
-  fi
+  [[ -n "$BRANCH" ]] && git checkout "$BRANCH"
   git_with_creds pull --ff-only
 else
   [[ -e "$TARGET" ]] && err "$TARGET already exists — use --update"
@@ -88,13 +95,44 @@ else
   fi
 fi
 
-# Scrub creds from env for the rest of the script
 unset GIT_TOKEN GIT_USER
 
-[[ -f "$TARGET/SKILL.md" ]] || { rm -rf "$TARGET"; err "no SKILL.md at repo root — not a skill"; }
+# Detect skill layout
+SKILLS=()
+if [[ -f "$TARGET/SKILL.md" ]]; then
+  SKILLS+=("$NAME:$TARGET")
+else
+  for sub in "$TARGET"/*/; do
+    [[ -d "$sub" ]] || continue
+    [[ -f "$sub/SKILL.md" ]] || continue
+    sub_name=$(basename "$sub")
+    if [[ -n "$ONLY" && "$ONLY" != "$sub_name" ]]; then continue; fi
+    SKILLS+=("$sub_name:${sub%/}")
+  done
+fi
 
-ln -sfn "$TARGET" "$CLAUDE_DIR/$NAME"
-ln -sfn "$TARGET" "$CODEX_DIR/$NAME"
+[[ ${#SKILLS[@]} -gt 0 ]] || { rm -rf "$TARGET"; err "no SKILL.md found at root or in any subdir"; }
+
+# Symlink each skill + its agents
+INSTALLED=()
+for entry in "${SKILLS[@]}"; do
+  s_name="${entry%%:*}"
+  s_path="${entry#*:}"
+
+  ln -sfn "$s_path" "$CLAUDE_SKILLS/$s_name"
+  ln -sfn "$s_path" "$CODEX_SKILLS/$s_name"
+
+  if [[ -d "$s_path/agents" ]]; then
+    for agent in "$s_path/agents/"*.md; do
+      [[ -f "$agent" ]] || continue
+      a_base=$(basename "$agent")
+      ln -sfn "$agent" "$CLAUDE_AGENTS/$a_base"
+      ln -sfn "$agent" "$CODEX_AGENTS/$a_base"
+    done
+  fi
+
+  INSTALLED+=("$s_name")
+done
 
 VERSION=""
 if [[ -f "$TARGET/VERSION" ]]; then
@@ -103,13 +141,19 @@ else
   VERSION=$(git -C "$TARGET" describe --tags --always 2>/dev/null || true)
 fi
 
-DESC=$(awk '/^description:/{found=1; sub(/^description:[[:space:]]*/,""); if(length($0)){print; exit}; next} found && /^[[:space:]]+/ {sub(/^[[:space:]]+/,""); print; exit}' "$TARGET/SKILL.md" | tr -d '>' | sed 's/^[[:space:]]*//')
-
 cat <<EOF
-installed: $NAME
+installed: ${INSTALLED[*]}
+repo:      $TARGET
 version:   ${VERSION:-unknown}
-source:    $TARGET
-claude:    $CLAUDE_DIR/$NAME -> $TARGET
-codex:     $CODEX_DIR/$NAME -> $TARGET
-description: ${DESC:-(none)}
+skills:
+$(for s in "${INSTALLED[@]}"; do echo "  - $s → $CLAUDE_SKILLS/$s, $CODEX_SKILLS/$s"; done)
 EOF
+
+# Hint about post-install setup scripts
+for entry in "${SKILLS[@]}"; do
+  s_path="${entry#*:}"
+  if [[ -x "$s_path/scripts/setup.sh" ]]; then
+    s_name="${entry%%:*}"
+    echo "  setup needed: $s_path/scripts/setup.sh    # for $s_name"
+  fi
+done
