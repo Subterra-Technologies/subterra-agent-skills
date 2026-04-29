@@ -20,12 +20,14 @@ err() { echo "error: $*" >&2; exit 1; }
 ask() { local prompt="$1" def="${2:-}" v; read -rp "$prompt${def:+ [$def]}: " v || true; echo "${v:-$def}"; }
 ask_secret() { local prompt="$1" v; read -rsp "$prompt: " v; echo >&2; echo "$v"; }
 
-# Single-select. Uses fzf if available; else numbered prompt. Echoes choice on stdout.
+PICK_PY="${SKILL_DIR}/scripts/pick.py"
+
+# Single-select. Python TUI if available; else numbered prompt. Echoes choice on stdout.
 pick_one() {
   local prompt="$1"; shift
   local opts=("$@") n=${#opts[@]} i choice
-  if command -v fzf >/dev/null 2>&1 && [[ -t 2 ]]; then
-    printf "%s\n" "${opts[@]}" | fzf --prompt="$prompt > " --height=40% --reverse --no-multi
+  if command -v python3 >/dev/null 2>&1 && [[ -f "$PICK_PY" ]]; then
+    python3 "$PICK_PY" one "$prompt" "${opts[@]}"
     return
   fi
   printf "\n%s\n" "$prompt" >&2
@@ -38,13 +40,12 @@ pick_one() {
   printf "%s\n" "${opts[$((choice-1))]}"
 }
 
-# Multi-select. Uses fzf --multi if available; else space-separated numbers (Enter = all). Echoes chosen lines.
+# Multi-select. Python TUI if available; else space-separated numbers (Enter = all).
 pick_many() {
   local prompt="$1"; shift
   local opts=("$@") n=${#opts[@]} i choice num
-  if command -v fzf >/dev/null 2>&1 && [[ -t 2 ]]; then
-    printf "%s\n" "${opts[@]}" | fzf --prompt="$prompt > " --height=40% --reverse --multi \
-      --header="TAB to toggle, Enter to confirm"
+  if command -v python3 >/dev/null 2>&1 && [[ -f "$PICK_PY" ]]; then
+    python3 "$PICK_PY" many "$prompt" "${opts[@]}"
     return
   fi
   printf "\n%s\n" "$prompt" >&2
