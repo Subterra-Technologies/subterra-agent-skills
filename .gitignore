@@ -1,0 +1,5 @@
+*.local.md
+*.local.*
+.DS_Store
+*.swp
+*~
