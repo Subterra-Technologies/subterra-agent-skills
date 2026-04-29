@@ -41,15 +41,19 @@ The `notes` skill needs a one-time Docmost configuration. After install:
 
 Or, if `npx skills` symlinked into the project/global skills dir directly, find the file at `<install-path>/notes/scripts/setup.sh`.
 
+**Auth uses a Docmost API key (Bearer token), not a user account.** Generate one in Docmost → Settings → Account → API keys before running setup.
+
 The script will:
 
-1. Prompt for Docmost base URL, agent account email + password
-2. Mint a JWT, store at `~/.docmost/token` (chmod 600)
+1. Prompt for Docmost base URL and the API key
+2. Verify the key works, store at `~/.docmost/api-key` (chmod 600)
 3. Save non-secret config to `~/.docmost/config`
 4. Discover spaces and prompt for the inbox parent
 5. Optionally create the `AI Notes Agent` parent + 4 subpages
 6. Write `references/config.local.md` (gitignored)
 7. Symlink `agents/notes-librarian.md` into `~/.claude/agents/` and `~/.codex/agents/` so the orchestrator can spawn the librarian as a subagent
+
+Rotate by revoking the key in Docmost and re-running setup.
 
 Re-run with `--refresh` to update cached entity lists (e.g. after adding new clients in Docmost).
 
