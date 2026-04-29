@@ -29,6 +29,8 @@ BRANCH=""
 UPDATE=0
 ONLY=""
 LINK_ONLY=0
+PICK=0
+ALL=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -36,6 +38,8 @@ while [[ $# -gt 0 ]]; do
     --update) UPDATE=1; shift;;
     --only)   ONLY="$2"; shift 2;;
     --link-only) LINK_ONLY=1; shift;;
+    --pick)   PICK=1; shift;;
+    --all)    ALL=1; shift;;
     -h|--help) sed -n '2,16p' "$0"; exit 0;;
     *)
       if [[ -z "$URL" ]]; then URL="$1"
@@ -112,6 +116,52 @@ else
 fi
 
 [[ ${#SKILLS[@]} -gt 0 ]] || { rm -rf "$TARGET"; err "no SKILL.md found at root or in any subdir"; }
+
+# Interactive picker for monorepos
+# Auto-prompt when:
+#   - more than one skill detected
+#   - --only / --all not given
+#   - stdin is a tty
+# Force with --pick. Skip with --all.
+if [[ ${#SKILLS[@]} -gt 1 && $ALL -eq 0 && -z "$ONLY" ]]; then
+  if [[ $PICK -eq 1 || -t 0 ]]; then
+    echo
+    echo "Available skills in $NAME:"
+    i=0
+    for entry in "${SKILLS[@]}"; do
+      i=$((i+1))
+      s_name="${entry%%:*}"
+      s_path="${entry#*:}"
+      desc=$(awk '
+        /^description:[[:space:]]*>/ {found=1; next}
+        /^description:/ {sub(/^description:[[:space:]]*/,""); print; exit}
+        found && /^[[:space:]]+/ {sub(/^[[:space:]]+/,""); print; exit}
+      ' "$s_path/SKILL.md" | head -c 100)
+      printf "  %d) %-20s %s\n" "$i" "$s_name" "${desc}"
+    done
+    echo
+    read -rp "Select (numbers/names comma-separated, 'all', blank=all): " choice
+    if [[ -n "$choice" && "$choice" != "all" ]]; then
+      FILTERED=()
+      IFS=',' read -ra picks <<< "$choice"
+      for pick in "${picks[@]}"; do
+        pick=$(echo "$pick" | tr -d '[:space:]')
+        [[ -z "$pick" ]] && continue
+        for entry in "${SKILLS[@]}"; do
+          s_name="${entry%%:*}"
+          if [[ "$pick" =~ ^[0-9]+$ ]]; then
+            idx=$((pick-1))
+            if [[ "${SKILLS[$idx]:-}" == "$entry" ]]; then FILTERED+=("$entry"); break; fi
+          elif [[ "$pick" == "$s_name" ]]; then
+            FILTERED+=("$entry"); break
+          fi
+        done
+      done
+      [[ ${#FILTERED[@]} -gt 0 ]] || err "no skills matched picker selection"
+      SKILLS=("${FILTERED[@]}")
+    fi
+  fi
+fi
 
 # Symlink each skill + its agents
 INSTALLED=()

@@ -46,7 +46,12 @@ For each detected skill, any `agents/*.md` files are also symlinked into both ag
 - `name` — optional override; default is the repo basename.
 - `--branch <ref>` — branch or tag (default `main`).
 - `--update` — pull latest into an existing install.
-- `--only <skill>` — for monorepos, install just the named subdir.
+- `--only <skill>` — for monorepos, install just the named subdir (non-interactive).
+- `--all` — install every skill in a monorepo, no prompt.
+- `--pick` — force the interactive picker even when stdin isn't a tty.
+- `--link-only` — skip cloning, just link an existing checkout. Used by the bootstrap snippet.
+
+**Interactive picker:** when a monorepo with >1 skill is detected and stdin is a tty, the installer lists skills with their descriptions and asks which to install. Pass `--all` to skip the prompt and install everything, or `--only <name>` to pick non-interactively.
 
 ## Behavior
 
