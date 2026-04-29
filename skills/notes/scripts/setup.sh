@@ -90,24 +90,25 @@ api() {
 echo
 echo "discovering spaces..."
 SPACES_JSON=$(api /spaces '{}')
-echo "$SPACES_JSON" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
+SPACES_JSON="$SPACES_JSON" python3 <<'PY'
+import json, os
+d = json.loads(os.environ["SPACES_JSON"])
 items = d.get("data", {}).get("items", [])
 for i, s in enumerate(items, 1):
     print(f"  {i}. {s['name']:30} {s['id']}")
-'
+PY
 
 echo
 INBOX_SPACE_NAME=$(ask "Which space should host the AI Notes Agent inbox?" "Projects")
-INBOX_SPACE_ID=$(echo "$SPACES_JSON" | python3 -c '
-import json, sys
-target = sys.argv[1]
-d = json.load(sys.stdin)
+INBOX_SPACE_ID=$(SPACES_JSON="$SPACES_JSON" TARGET="$INBOX_SPACE_NAME" python3 <<'PY'
+import json, os
+target = os.environ["TARGET"]
+d = json.loads(os.environ["SPACES_JSON"])
 for s in d.get("data", {}).get("items", []):
     if s["name"].lower() == target.lower():
         print(s["id"]); break
-' "$INBOX_SPACE_NAME")
+PY
+)
 [[ -n "$INBOX_SPACE_ID" ]] || err "space '$INBOX_SPACE_NAME' not found"
 
 CREATE_AREA=$(ask "Create 'AI Notes Agent' parent + subpages in $INBOX_SPACE_NAME? (y/N)" "N")
@@ -143,13 +144,14 @@ fi
 echo
 echo "writing $LOCAL_CONFIG"
 
-SPACES_YAML=$(echo "$SPACES_JSON" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
+SPACES_YAML=$(SPACES_JSON="$SPACES_JSON" python3 <<'PY'
+import json, os
+d = json.loads(os.environ["SPACES_JSON"])
 print("spaces:")
 for s in d.get("data", {}).get("items", []):
     print(f"  {s['name']}: \"{s['id']}\"")
-')
+PY
+)
 
 LINK_BASE=$(ask "Public link base for sharing (e.g. https://docs.example.com)" "$DOCMOST_URL")
 
